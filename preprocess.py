@@ -4,15 +4,21 @@ import torch
 from collections import Counter
 
 class dataset:
-  def __init__(self,args,fn):
+  def __init__(self,args,fn,vocab=False):
     self.args = args
     self.srcvectors = []
     self.tgtvectors = []
     self.srcvocabs = []
     self.tgtvocabs = []
+    self.vocab = vocab
     self.data = self.load(fn)
 
-  def mk_vocab(self,data):
+  def lenvocabs(self):
+    return [len(x[0]) for x in self.srcvocabs], [len(x[0]) for x in self.tgtvocabs]
+
+  def mk_vocab(self,fn):
+    with open(fn) as f:
+      data = f.read().split()
     c = Counter(data)
     itos = ['<pad>','<start>','<end>','<unk>'] + [x for x in c if c[x]>self.args.oov]
     stoi = {x:itos.index(x) for x in itos}
@@ -23,33 +29,32 @@ class dataset:
 
   def load(self,fn):
     fns = os.listdir(fn)
-    srcs = [x for x in fns if "src" in x]
-    tgts = [x for x in fns if "tgt" in x]
+    srcs = [fn+x for x in fns if "src" in x]
+    tgts = [fn+x for x in fns if "tgt" in x]
     srcs.sort()
     tgts.sort()
-    def get_vocab_vecs(filename,src=True):
-      tmpvectors = []
-      with open(filename) as g:
-        tmpvocab = self.mk_vocab(g.read().split())
-        tmpstoi = tmpvocab[1]
-        g.seek(0)
-        for l in g:
-          tmpvectors.append(self.mk_one_hot(l.split(" "),tmpstoi))
-      if src:
-        self.srcvocabs.append(tmpvocab)
-        self.srcvectors.append(tmpvectors)
-      else:
-        self.tgtvocabs.append(tmpvocab)
-        self.tgtvectors.append(tmpvectors)
-    for f in srcs:
-      get_vocab_vecs(fn+f)
-    for f in tgts:
-      get_vocab_vecs(fn+f,src=False)
+    if self.vocab:
+      print('using vocabs')
+      self.srcvocabs, self.tgtvocabs = self.vocab
+    else:
+      self.srcvocabs = [self.mk_vocab(f) for f in srcs]
+      self.tgtvocabs = [self.mk_vocab(f) for f in tgts]
+    print(len(self.srcvocabs))
+    #vectors 
+    self.srcvectors = [self.get_vecs(f,self.srcvocabs[i][1]) for i,f in enumerate(srcs)]
+    self.tgtvectors = [self.get_vecs(f,self.tgtvocabs[i][1]) for i,f in enumerate(tgts)]
+      
+  def get_vecs(self,filename,vocab):
+    tmpvectors = []
+    with open(filename) as g:
+      for l in g:
+        tmpvectors.append(self.mk_one_hot(l.split(" "),vocab))
+    return tmpvectors
 
 if __name__=="__main__":
   import opts
   args = opts.preprocess_params()
   train = dataset(args,args.train)
-  val = dataset(args,args.val)
+  val = dataset(args,args.val,vocab=(train.srcvocabs,train.tgtvocabs))
   torch.save(train, args.data+"train.pt")
   torch.save(val, args.data+"val.pt")

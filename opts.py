@@ -14,6 +14,14 @@ def preprocess_params():
 def main_params():
   parser = argparse.ArgumentParser(description='none')
   parser.add_argument('-data',default='./data/')
+  parser.add_argument('-bsz',default=64)
+  parser.add_argument('-esz',default=300)
+  parser.add_argument('-hsz',default=500)
+  parser.add_argument('-vsz1',default=500)
+  parser.add_argument('-vsz2',default=500)
+  parser.add_argument('-ovsz1',default=500)
+  parser.add_argument('-ovsz2',default=500)
+  parser.add_argument('-lr',default=0.001)
 
   args = parser.parse_args()
   return args
