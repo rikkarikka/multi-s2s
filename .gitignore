@@ -1,0 +1,4 @@
+*.swp
+*.pt
+data/*.pt
+*.pyc
