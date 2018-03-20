@@ -12,9 +12,6 @@ class model(nn.Module):
     self.enc2 = encoder(args.vsz2,args.esz,args.hsz)
     self.dec = decoder(args)
 
-  def reorganize(self,x,idxs):
-    return x.index_select(0,idxs)
-
   def forward(self,inputs,bookkeeping):
     l1,h1 = self.enc1(inputs[0],bookkeeping[4])
     l2,h2 = self.enc2(inputs[1],bookkeeping[5])
@@ -43,7 +40,7 @@ class encoder(nn.Module):
     return l,h
 
 class decoder(nn.Module):
-  def __init__(self,args,gpu=False):
+  def __init__(self,args,gpu=True):
     super().__init__()
     self.embed = nn.Embedding(args.ovsz1,args.esz)
     self.cell = nn.GRUCell(args.esz,args.hsz)
@@ -51,11 +48,12 @@ class decoder(nn.Module):
     self.hproj = nn.Linear(args.hsz*3,args.hsz)
     self.gproj = nn.Linear(args.hsz,args.ovsz1)
     self.attn = Attention()
+    self.bsz = args.bsz
     if gpu: self.tt = torch.cuda
     else: self.tt = torch
 
-  def mkstart(self,bsz):
-    return self.embed(Variable(self.tt.LongTensor(bsz,1).fill_(1)))
+  def mkstart(self):
+    return self.embed(Variable(torch.cuda.LongTensor(self.bsz).fill_(1)))
 
   def gen(self,g):
     _, idxs = torch.max(g,1)
@@ -63,13 +61,11 @@ class decoder(nn.Module):
 
   def forward(self,h1,l1,mask1,h2,l2,mask2,dec_outs,ss=False):
     h = F.tanh(self.encproj(torch.cat((h1,h2),dim=2)))
-    print(h.size())
-    prevw = self.mkstart(1)
+    prevw = self.mkstart()
     prevw = prevw.squeeze(0)
     h = h.squeeze(0)
     
     outputs = []
-    print(dec_outs.size())
     for i in range(dec_outs.size(1)):
       op = self.cell(prevw,h)
       attn1 = self.attn(h,l1,mask1)

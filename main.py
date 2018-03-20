@@ -51,7 +51,7 @@ def batchify(data,bsz):
     batches.append((src1,src2,tgts,(idx1,lens1,mask1),(idx2,lens2,mask2)))
   return batches
   
-def epoch(data,loss,model,optim,args,gpu=False):
+def epoch(data,loss,model,optim,args,gpu=True):
   if gpu: tt = torch.cuda
   else: tt = torch
   #shuffle(batches)
@@ -80,15 +80,14 @@ def epoch(data,loss,model,optim,args,gpu=False):
   return epo
 
   
-def validate(data,loss,model,optim,args,gpu=False):
+def validate(data,loss,model,optim,args,gpu=True):
   if gpu: tt = torch.cuda
   else: tt = torch
-  batches = batchify(data,args.bsz)
   t_loss = 0
   t_tokens = 0
   acc = 0
   model.eval()
-  for b in batches[:1]:
+  for b in data[:1]:
     optim.zero_grad()
     src1, src2, tgts = b[:3]
     idx1,lens1,mask1 = b[3]
@@ -104,11 +103,17 @@ def validate(data,loss,model,optim,args,gpu=False):
     bookkeeping = (idx1,mask1,idx2,mask2,lens1,lens2)
     preds = model.forward(inputs,bookkeeping)
     preds = preds.view(-1,args.ovsz1)
+    print(tgts.size())
     tgts = tgts.view(-1)
-    t_loss += preds.size(0) * loss(preds,tgts).data[0]
+    tmask = tgts.ne(0)
+    toks = tmask.sum().data[0]
+    print("toks ",toks)
+    t_loss += toks * loss(preds,tgts).data[0]
     _,midxs = preds.max(1)
+    midxs[tmask].fill_(-1)
+    print(midxs.size(),tgts.size())
     acc += midxs.eq(tgts).data[0]
-    t_tokens += preds.size(0)
+    t_tokens += toks
   
   model.train()
   t_loss = t_loss / t_tokens
@@ -130,16 +135,18 @@ if __name__=="__main__":
   print(args.vsz1,args.vsz2)
   args.ovsz1 = tvsz[0]
   m = model(args)
+  m = m.cuda()
   optim = torch.optim.Adam(params=m.parameters(),lr=args.lr)
   weights = torch.FloatTensor(args.ovsz1).fill_(1)
   weights[0] = 0
   loss = nn.CrossEntropyLoss(weights)
+  loss = loss.cuda()
   lastloss = sys.maxsize
   traindata = batchify(train,args.bsz)
   while True:
     e = epoch(traindata,loss,m,optim,args)
     print("Train Loss",e)
-    v = validate(train,loss,m,optim,args)
+    v = validate(traindata,loss,m,optim,args)
     if v>lastloss:
       args.lr = args.lr*0.5
       print("decaying lr to ",args.lr)
